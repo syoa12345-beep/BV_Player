@@ -1999,5 +1999,33 @@ $('saveAllSound').onclick = () => saveSounds(true);
  window.addEventListener('appinstalled',()=>{bar.style.display='none';deferred=null;});
 })();
 </script>
+
+<script>
+/* PC: 이퀄라이저 프리셋 줄을 마우스로 끌거나 휠로 옆으로 넘기기 */
+(function(){
+  var row=document.getElementById('eqPresets'); if(!row) return;
+  var down=false,sx=0,sl=0,moved=false;
+  row.style.cursor='grab';
+  row.addEventListener('pointerdown',function(e){
+    if(e.pointerType!=='mouse'||e.button!==0) return;
+    down=true;moved=false;sx=e.clientX;sl=row.scrollLeft;
+  });
+  window.addEventListener('pointermove',function(e){
+    if(!down) return;
+    var dx=e.clientX-sx;
+    if(Math.abs(dx)>5){moved=true;row.style.cursor='grabbing';}
+    if(moved) row.scrollLeft=sl-dx;
+  });
+  window.addEventListener('pointerup',function(){
+    if(!down) return; down=false; row.style.cursor='grab';
+  });
+  row.addEventListener('click',function(e){
+    if(moved){e.preventDefault();e.stopPropagation();moved=false;}
+  },true);
+  row.addEventListener('wheel',function(e){
+    if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){row.scrollLeft+=e.deltaY;e.preventDefault();}
+  },{passive:false});
+})();
+</script>
 </body>
 </html>
