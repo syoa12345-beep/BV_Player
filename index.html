@@ -1750,10 +1750,141 @@ $('saveAllSound').onclick = () => saveSounds(true);
 </script>
 
 <script>
-/* 웹 주소로 열 때만 '앱 설치'가 가능하도록 서비스 워커 등록 (안드로이드 앱 안에서는 동작하지 않음) */
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
-}
+/* BV_Player Android media-session bridge */
+(function(){
+  if (window.__bvNativeMediaBridgeInstalled) return;
+  window.__bvNativeMediaBridgeInstalled = true;
+
+  function nativeCall(method, args) {
+    try {
+      if (window.BVNativeMedia && typeof window.BVNativeMedia[method] === 'function') {
+        window.BVNativeMedia[method].apply(window.BVNativeMedia, args || []);
+      }
+    } catch(e) {}
+  }
+  function getText(id) {
+    var el = document.getElementById(id);
+    return el ? (el.textContent || '').trim() : '';
+  }
+  function syncMetadata() {
+    var title = getText('currentTitle');
+    var meta = getText('currentMeta');
+    nativeCall('updateMetadata', [title || 'BV_Player', meta || 'BV_Player', Number(window.__bvMediaDuration || 0)]);
+  }
+  function syncState() {
+    var media = document.getElementById('mediaPlayer');
+    if (!media) return;
+    nativeCall('updatePlaybackState', [
+      media.paused ? 2 : 3,
+      Number(media.currentTime || 0) * 1000,
+      Number(media.duration || 0) * 1000
+    ]);
+    syncMetadata();
+  }
+  function attach() {
+    var media = document.getElementById('mediaPlayer');
+    if (!media || media.__bvNativeListeners) return;
+    media.__bvNativeListeners = true;
+    ['loadedmetadata','durationchange','play','pause','timeupdate','ended','seeked'].forEach(function(evt){
+      media.addEventListener(evt, syncState);
+    });
+    syncMetadata();
+    syncState();
+  }
+  window.BVPlayerNativeCommand = function(command, value) {
+    var media = document.getElementById('mediaPlayer');
+    try {
+      if (command === 'play') {
+        var btn = document.getElementById('playBtn');
+        if (media && media.paused && btn) btn.click();
+      } else if (command === 'pause') {
+        if (media && !media.paused) media.pause();
+      } else if (command === 'next') {
+        var next = document.getElementById('nextBtn'); if (next) next.click();
+      } else if (command === 'previous') {
+        var prev = document.getElementById('prevBtn'); if (prev) prev.click();
+      } else if (command === 'seek' && media) {
+        media.currentTime = Math.max(0, Number(value || 0) / 1000);
+      }
+    } catch(e) {}
+    setTimeout(syncState, 150);
+  };
+  document.addEventListener('DOMContentLoaded', attach);
+  var observer = new MutationObserver(function(){ attach(); syncMetadata(); });
+  observer.observe(document.documentElement, {childList:true, subtree:true, characterData:true});
+  setInterval(syncMetadata, 2000);
+})();
+</script>
+
+<script>
+/* 웹 주소로 열 때만 '앱 설치'가 가능하도록 서비스 워커 등록 + 아래쪽 설치 안내 (안드로이드 앱 안에서는 동작하지 않음) */
+(function(){
+  if (!/^https?:$/.test(location.protocol)) return;
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+  }
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (standalone) return;
+  var closed = false;
+  try { closed = sessionStorage.getItem('bvInstallClosed') === '1'; } catch(e) {}
+  if (closed) return;
+
+  var deferred = null, bar = null;
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  function fit(){
+    var dock = document.querySelector('.bottom-dock'), shell = document.querySelector('.app-shell');
+    if (dock && shell) shell.style.paddingBottom = (dock.offsetHeight + 8) + 'px';
+  }
+  function hide(remember){
+    if (bar) { bar.remove(); bar = null; }
+    if (remember) { try { sessionStorage.setItem('bvInstallClosed', '1'); } catch(e) {} }
+    var shell = document.querySelector('.app-shell'); if (shell) shell.style.paddingBottom = '';
+  }
+  function show(mode){
+    var dock = document.querySelector('.bottom-dock');
+    if (!dock) return;
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'installBar';
+      bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;max-width:540px;margin:0 auto;font-size:13px;color:#e2e8f0;border-bottom:1px solid rgba(0,242,254,0.25)';
+      dock.insertBefore(bar, dock.firstChild);
+    }
+    bar.innerHTML = '';
+    var msg = document.createElement('div');
+    msg.style.cssText = 'flex:1;min-width:0;line-height:1.35';
+    var close = document.createElement('button');
+    close.textContent = '✕'; close.title = '닫기';
+    close.style.cssText = 'min-width:34px;height:34px;padding:0;border-radius:9px;flex:none';
+    close.onclick = function(){ hide(true); };
+    if (mode === 'prompt') {
+      msg.textContent = '📲 BV MV Player를 앱으로 설치할 수 있어요';
+      var btn = document.createElement('button');
+      btn.textContent = '설치';
+      btn.className = 'primary';
+      btn.style.cssText = 'min-height:34px;padding:0 16px;border-radius:9px;font-weight:800;flex:none';
+      btn.onclick = function(){
+        if (!deferred) return;
+        deferred.prompt();
+        deferred.userChoice.then(function(){ deferred = null; hide(false); });
+      };
+      bar.appendChild(msg); bar.appendChild(btn); bar.appendChild(close);
+    } else {
+      msg.textContent = isIOS
+        ? '📲 설치: 아래 공유 버튼(□↑) → "홈 화면에 추가"'
+        : '📲 설치: 브라우저 메뉴(⋮) → "앱 설치" 또는 "홈 화면에 추가"';
+      bar.appendChild(msg); bar.appendChild(close);
+    }
+    fit();
+  }
+
+  window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); deferred = e; show('prompt'); });
+  window.addEventListener('appinstalled', function(){ hide(false); });
+  window.addEventListener('resize', function(){ if (bar) fit(); });
+  window.addEventListener('load', function(){
+    setTimeout(function(){ if (!deferred && !bar) show('help'); }, 2500);
+  });
+})();
 </script>
 </body>
 </html>
