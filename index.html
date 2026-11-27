@@ -80,6 +80,14 @@ h1{
 }
 .header-btn:active{transform:scale(0.96)}
 .header-actions{display:flex;align-items:center;gap:6px;flex:none}
+/* 위쪽 버튼: 글자 대신 같은 크기의 아이콘 버튼으로 깔끔하게 */
+.header-actions .header-btn{width:40px;height:40px;min-height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.header-actions .header-btn svg{width:20px;height:20px}
+#clearBtn{color:#fca5a5}
+h1{white-space:nowrap;font-size:clamp(14px,4.5vw,20px)}
+.brand-title{gap:9px}
+.app-icon{width:38px;height:38px}
+#saveStatus{display:none} /* 위쪽의 작은 앨범 글자는 숨김(아래 앨범 줄에 이미 표시됨) */
 .yt-link{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;color:#fff;border-color:rgba(239,68,68,0.55);background:linear-gradient(135deg,rgba(220,38,38,0.55),rgba(127,29,29,0.55))}
 .yt-link:visited{color:#fff}
 
@@ -221,6 +229,15 @@ input[type=range]{
   border-color:var(--accent2);color:#fff;
   box-shadow:0 4px 14px rgba(0,242,254,0.22);
 }
+/* 앨범 탭: 화면에 들어가는 만큼만 보여주고 ◀ ▶ 로 넘긴다 */
+.album-tabs-wrap{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.album-tabs{flex:1;min-width:0;overflow:hidden;margin-bottom:0;padding-bottom:0}
+.album-tab{max-width:100%;overflow:hidden;text-overflow:ellipsis;padding:8px 10px;font-size:13px;min-height:40px;gap:5px}
+.album-tab .tab-cnt{font-size:11px;padding:1px 6px}
+.album-tab > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.album-tab .tab-cnt{flex:none}
+.tab-arrow{flex:none;width:30px;height:40px;padding:0;border-radius:11px;font-size:13px;display:none}
+.tab-arrow:disabled{opacity:.28;cursor:default}
 .album-tab .tab-cnt{
   font-size:12px;background:rgba(0,0,0,0.35);padding:2px 7px;border-radius:10px;
 }
@@ -304,6 +321,12 @@ input[type=range]{
 }
 .eq-reset-btn{padding:7px 12px;font-size:12.5px;min-height:36px;border-radius:10px}
 
+/* 이퀄라이저 프리셋: 선택된 것만 강조 */
+.eq-presets{display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}
+.eq-presets::-webkit-scrollbar{display:none}
+.eq-preset{flex:none;padding:8px 13px;border-radius:10px;font-size:13px;font-weight:700;min-height:36px;
+  background:#1a2136;border:1px solid var(--line);color:#cbd5e1;white-space:nowrap}
+.eq-preset.active{border-color:var(--accent2);background:rgba(0,242,254,0.10);color:#fff}
 .eq-sliders{display:flex;flex-direction:column;gap:8px}
 .eq-slider-wrap{
   display:grid;grid-template-columns:48px 1fr 44px;
@@ -380,6 +403,14 @@ input[type=range]{
 .modal-input:focus{border-color:var(--accent2)}
 .modal-btns{display:flex;justify-content:flex-end;gap:10px}
 .modal-btns button{min-height:44px;padding:0 18px;font-size:14.5px}
+
+/* ===== 선택된 것만 강조: 일반 버튼은 차분하게, 선택된 것만 테두리/색으로 표시 ===== */
+.quick-add-btn,#addAlbumBtn,.drop-btns .primary{
+  background:var(--panel-2);border:1px solid var(--line);color:#e2e8f0;box-shadow:none;
+}
+.album-tab.active{
+  background:rgba(0,242,254,0.10);border-color:var(--accent2);color:#fff;box-shadow:none;
+}
 </style>
 
 <link rel="manifest" href="./manifest.webmanifest">
@@ -420,7 +451,7 @@ input[type=range]{
     </div>
     <div class="header-actions">
       <a id="youtubeLink" class="header-btn yt-link" href="https://www.youtube.com/@BV_korea" target="_blank" rel="noopener noreferrer" title="BV_korea 홈페이지" aria-label="홈페이지"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5a1 1 0 0 0 1 1H10v-5.5h4v5.5h3.5a1 1 0 0 0 1-1V10"/></svg></a>
-      <button id="clearBtn" class="header-btn">앨범 비우기</button>
+      <button id="clearBtn" class="header-btn" title="앨범 비우기" aria-label="앨범 비우기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
     </div>
   </header>
 
@@ -472,7 +503,11 @@ input[type=range]{
         </div>
       </div>
 
-      <div class="album-tabs" id="albumTabs"></div>
+      <div class="album-tabs-wrap" id="albumTabsWrap">
+        <button type="button" id="albumPrev" class="tab-arrow" aria-label="이전 앨범들">◀</button>
+        <div class="album-tabs" id="albumTabs"></div>
+        <button type="button" id="albumNext" class="tab-arrow" aria-label="다음 앨범들">▶</button>
+      </div>
 
       <div class="drop" id="drop">
         <div class="drop-btns">
@@ -529,6 +564,7 @@ input[type=range]{
           <span>10-BAND EQUALIZER</span>
           <button id="eqReset" class="eq-reset-btn">초기화</button>
         </div>
+        <div class="eq-presets" id="eqPresets"></div>
         <div class="eq-sliders" id="eqSlidersContainer"></div>
       </div>
     </div>
@@ -835,9 +871,59 @@ async function renderAlbumTabs(){
  const curAlb = albums.find(a => a.id === activeAlbumId);
  $('activeAlbumTitle').textContent = curAlb ? `💿 ${curAlb.name}` : '💿 기억 앨범';
 
- const activeTabEl = container.querySelector('.album-tab.active');
- if(activeTabEl) activeTabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+ layoutAlbumTabs(true);
 }
+
+/* ===== 앨범 탭 쪽 넘기기 ===== */
+let albumPage = 0;
+let albumPages = [[]];
+function layoutAlbumTabs(followActive){
+ const box = $('albumTabs'), prev = $('albumPrev'), next = $('albumNext');
+ if(!box || !prev || !next) return;
+ const tabs = [...box.querySelectorAll('.album-tab')];
+ tabs.forEach(t => { t.style.display = ''; });
+ prev.style.display = next.style.display = 'none';
+ const GAP = 8;
+ const fitsAll = () => tabs.reduce((s, t) => s + t.offsetWidth + GAP, -GAP) <= box.clientWidth;
+ if(!tabs.length || fitsAll()){ albumPage = 0; albumPages = [tabs.map((_, i) => i)]; return; }
+ prev.style.display = next.style.display = 'inline-flex';
+ const room = box.clientWidth;
+ albumPages = [[]];
+ let used = 0;
+ tabs.forEach((t, i) => {
+  const w = Math.min(t.offsetWidth, room);
+  const page = albumPages[albumPages.length - 1];
+  if(page.length && used + GAP + w > room){ albumPages.push([i]); used = w; }
+  else { used += (page.length ? GAP : 0) + w; page.push(i); }
+ });
+ if(followActive){
+  const ai = tabs.findIndex(t => t.classList.contains('active'));
+  const pi = albumPages.findIndex(p => p.includes(ai));
+  albumPage = pi >= 0 ? pi : 0;
+ }
+ albumPage = Math.max(0, Math.min(albumPage, albumPages.length - 1));
+ const show = new Set(albumPages[albumPage]);
+ tabs.forEach((t, i) => { t.style.display = show.has(i) ? '' : 'none'; });
+ prev.disabled = albumPage <= 0;
+ next.disabled = albumPage >= albumPages.length - 1;
+}
+function albumTabsGo(d){
+ albumPage += d;
+ layoutAlbumTabs(false);
+}
+$('albumPrev').onclick = () => albumTabsGo(-1);
+$('albumNext').onclick = () => albumTabsGo(1);
+(function(){
+ let x0 = null;
+ const box = $('albumTabs');
+ box.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, {passive:true});
+ box.addEventListener('touchend', e => {
+  if(x0 === null) return;
+  const dx = e.changedTouches[0].clientX - x0; x0 = null;
+  if(Math.abs(dx) > 50) albumTabsGo(dx < 0 ? 1 : -1);
+ }, {passive:true});
+})();
+window.addEventListener('resize', () => layoutAlbumTabs(true));
 
 async function switchAlbum(albumId, autoPlayFirst = false){
  if(albumId === activeAlbumId && playlist.length){
@@ -1208,11 +1294,52 @@ function buildEqSliders(){
    if(eqFilters[idx]) eqFilters[idx].gain.value = val;
    const lbl = $('eqVal_' + idx);
    if(lbl) lbl.textContent = (val > 0 ? '+' : '') + val + 'dB';
+   setEqPresetActive(null); // 직접 조정하면 프리셋 선택 표시는 해제
   };
  });
 }
 
+/* ===== 이퀄라이저 프리셋 (60Hz ~ 16kHz, 10밴드, 단위 dB) ===== */
+const EQ_PRESETS = [
+ ['플랫',       [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+ ['베이스 부스트',[ 6, 5, 3, 1, 0, 0, 0, 0, 0, 0]],
+ ['차량용',     [ 4, 3, 1, 0, 1, 3, 3, 1, 0, 0]],
+ ['보컬',       [-2,-1, 0, 2, 4, 4, 2, 0,-1,-2]],
+ ['팝',         [-1, 2, 4, 4, 2, 0,-1,-1, 0, 1]],
+ ['록',         [ 5, 3, 2,-1,-2,-1, 2, 4, 5, 5]],
+ ['힙합',       [ 5, 4, 1, 3,-1,-1, 1,-1, 2, 3]],
+ ['일렉트로닉', [ 5, 4, 1, 0,-2, 2, 1, 1, 4, 5]],
+ ['재즈',       [ 3, 2, 1, 2,-2,-2, 0, 1, 2, 3]],
+ ['클래식',     [ 0, 0, 0, 0, 0, 0,-2,-2,-2,-3]],
+ ['어쿠스틱',   [ 4, 4, 3, 1, 2, 2, 3, 3, 3, 2]]
+];
+function setEqPresetActive(name){
+ document.querySelectorAll('#eqPresets .eq-preset').forEach(b => b.classList.toggle('active', b.dataset.preset === name));
+}
+function applyEqPreset(name){
+ const p = EQ_PRESETS.find(x => x[0] === name);
+ if(!p) return;
+ initAudioNodes();
+ p[1].forEach((v, i) => {
+  if(eqFilters[i]) eqFilters[i].gain.value = v;
+ });
+ document.querySelectorAll('#eqSlidersContainer input').forEach((inp, i) => {
+  inp.value = p[1][i];
+  const lbl = $('eqVal_' + i);
+  if(lbl) lbl.textContent = (p[1][i] > 0 ? '+' : '') + p[1][i] + 'dB';
+ });
+ setEqPresetActive(name);
+}
+function buildEqPresets(){
+ const box = $('eqPresets');
+ if(!box) return;
+ box.innerHTML = EQ_PRESETS.map(p => `<button type="button" class="eq-preset" data-preset="${p[0]}">${p[0]}</button>`).join('');
+ box.querySelectorAll('.eq-preset').forEach(b => { b.onclick = () => applyEqPreset(b.dataset.preset); });
+ setEqPresetActive('플랫');
+}
+
 $('eqReset').onclick = () => {
+ setEqPresetActive('플랫');
  eqFilters.forEach(eq => eq.gain.value = 0);
  document.querySelectorAll('#eqSlidersContainer input').forEach((inp, i) => {
   inp.value = 0;
@@ -1772,6 +1899,7 @@ $('clearBtn').onclick = async () => {
 };
 
 buildEqSliders();
+buildEqPresets();
 updateModeUI();
 restoreMemoryAlbums();
 
