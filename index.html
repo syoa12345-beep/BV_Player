@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b0d16">
+<link rel="manifest" href="manifest.webmanifest">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -79,6 +80,9 @@ h1{
   min-height:40px;flex:none;cursor:pointer;
 }
 .header-btn:active{transform:scale(0.96)}
+.header-actions{display:flex;align-items:center;gap:6px;flex:none}
+.yt-link{display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;color:#fff;border-color:rgba(239,68,68,0.55);background:linear-gradient(135deg,rgba(220,38,38,0.55),rgba(127,29,29,0.55))}
+.yt-link:visited{color:#fff}
 
 button,.add{
   border:1px solid var(--line);
@@ -378,15 +382,6 @@ input[type=range]{
 .modal-btns{display:flex;justify-content:flex-end;gap:10px}
 .modal-btns button{min-height:44px;padding:0 18px;font-size:14.5px}
 </style>
-
-<link rel="manifest" href="./manifest.webmanifest">
-<meta name="application-name" content="BV MV Player">
-<style id="pwa-install-style">
-#pwaInstallBar{position:fixed;z-index:99999;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:none;align-items:center;gap:10px;padding:11px 13px;border:1px solid #465078;border-radius:15px;background:rgba(17,22,40,.96);color:#fff;box-shadow:0 8px 28px #0008;font:14px system-ui,sans-serif;backdrop-filter:blur(12px)}
-#pwaInstallBar button{border:0;border-radius:10px;padding:10px 14px;background:#a78bfa;color:#101323;font-weight:800;font-size:14px;white-space:nowrap}
-#pwaInstallBar .pwaClose{background:transparent;color:#cbd2e7;padding:7px}
-#pwaInstallBar span{flex:1;line-height:1.35}
-</style>
 </head>
 <body>
 
@@ -415,7 +410,10 @@ input[type=range]{
         <div class="status-pill" id="saveStatus">기억 앨범 불러오는 중…</div>
       </div>
     </div>
-    <button id="clearBtn" class="header-btn">앨범 비우기</button>
+    <div class="header-actions">
+      <a id="youtubeLink" class="header-btn yt-link" href="https://www.youtube.com/@BV_korea" target="_blank" rel="noopener noreferrer" title="BV_korea 홈페이지" aria-label="홈페이지"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5a1 1 0 0 0 1 1H10v-5.5h4v5.5h3.5a1 1 0 0 0 1-1V10"/></svg></a>
+      <button id="clearBtn" class="header-btn">앨범 비우기</button>
+    </div>
   </header>
 
   <section class="tab-view active" id="viewPlayer">
@@ -496,14 +494,14 @@ input[type=range]{
       <div class="fx-grid">
         <button id="bassToggle" class="fx-btn active-btn">BASS 저음강화</button>
         <button id="dtsToggle" class="fx-btn active-btn">DTS 3D 입체음향</button>
-        <button id="compToggle" class="fx-btn">COMP 음압보정</button>
+        <button id="compToggle" class="fx-btn active-btn">COMP 음압보정</button>
         <button id="crossToggle" class="fx-btn active-btn">CROSSFEED</button>
       </div>
 
       <div class="fx-card-row">
         <div class="fx-row-top">
           <span>BASS 저음 강도</span>
-          <span id="bassGainVal" style="color:var(--accent2);">0dB</span>
+          <span id="bassGainVal" style="color:var(--accent2);">+0dB</span>
         </div>
         <input id="bassGain" type="range" min="0" max="15" step="1" value="0">
       </div>
@@ -565,7 +563,7 @@ let playlist = [];
 let current = -1, shuffle = false, loopAll = true;
 let currentObjectURL = null;
 let audioCtx, sourceNode;
-let bassFilter, dtsFilter, compressorNode, crossfeedNode;
+let bassFilter, dtsFilter, compressorNode, crossfeedNode, crossGraph;
 let eqFilters = [];
 let isSeeking = false;
 let seekThrottleTimer = null;
@@ -1138,11 +1136,15 @@ function initAudioNodes(){
   sourceNode = audioCtx.createMediaElementSource(media);
   
   compressorNode = audioCtx.createDynamicsCompressor();
-  compressorNode.threshold.value = 0;
+  compressorNode.threshold.value = (typeof compEnabled !== 'undefined' && !compEnabled) ? 0 : -32;
   compressorNode.knee.value = 30;
   compressorNode.ratio.value = 12;
 
   crossfeedNode = audioCtx.createGain();
+  crossfeedNode.channelCount = 2;
+  crossfeedNode.channelCountMode = 'explicit';
+  crossfeedNode.channelInterpretation = 'speakers';
+  crossGraph = buildCrossfeed(audioCtx, crossfeedNode, crossEnabled);
 
   bassFilter = audioCtx.createBiquadFilter();
   bassFilter.type = 'lowshelf';
@@ -1167,7 +1169,7 @@ function initAudioNodes(){
   let lastNode = sourceNode;
   lastNode.connect(compressorNode);
   compressorNode.connect(crossfeedNode);
-  crossfeedNode.connect(bassFilter);
+  crossGraph.out.connect(bassFilter);
   bassFilter.connect(dtsFilter);
 
   let prevEq = dtsFilter;
@@ -1365,7 +1367,6 @@ function playAt(i){
  $('currentTitle').textContent = t.name;
  $('currentMeta').textContent = (curAlb ? `[${curAlb.name}] ` : '') + (current + 1) + ' / ' + playlist.length + ' · ' + (isVid ? '동영상 / MV' : '오디오');
  $('typeBadge').textContent = isVid ? 'VIDEO' : 'AUDIO';
- updateSystemMediaMetadata();
  render();
  savePlaybackState(true);
 }
@@ -1380,7 +1381,6 @@ media.addEventListener('loadedmetadata', () => {
   $('duration').textContent = fmt(media.duration);
  }
  pendingResumeTime = 0;
- updateSystemPlaybackState();
 });
 
 function nextTrack(){
@@ -1395,73 +1395,7 @@ function nextTrack(){
  playAt(nextIdx);
 }
 
-/* ===== 스마트폰 잠금화면·알림창·차량 블루투스 미디어 컨트롤 ===== */
-function mediaSessionSupported(){
- return ('mediaSession' in navigator) && window.MediaMetadata;
-}
-function updateSystemMediaMetadata(){
- if(!mediaSessionSupported() || current < 0 || !playlist[current]) return;
- const track = playlist[current];
- const title = (track.name || 'BV MV Player').replace(/\\.[^.]+$/, '');
- const album = (albums.find(a => a.id === activeAlbumId) || {}).name || 'BV MV Player';
- try{
-  navigator.mediaSession.metadata = new MediaMetadata({
-   title,
-   artist: 'BV MV Player',
-   album
-  });
-  navigator.mediaSession.playbackState = media.paused ? 'paused' : 'playing';
- }catch(_){}
-}
-function updateSystemPlaybackState(){
- if(!('mediaSession' in navigator)) return;
- try{
-  navigator.mediaSession.playbackState = media.paused ? 'paused' : 'playing';
-  if(typeof navigator.mediaSession.setPositionState === 'function' &&
-     Number.isFinite(media.duration) && media.duration > 0){
-   navigator.mediaSession.setPositionState({
-    duration: media.duration,
-    playbackRate: media.playbackRate || 1,
-    position: Math.min(media.currentTime || 0, media.duration)
-   });
-  }
- }catch(_){}
-}
-function installSystemMediaActions(){
- if(!('mediaSession' in navigator)) return;
- const actions = {
-  play: () => {
-   if(current < 0){ if(playlist.length) playAt(0); return; }
-   media.play().catch(()=>{});
-  },
-  pause: () => media.pause(),
-  nexttrack: () => nextTrack(),
-  previoustrack: () => {
-   if(!playlist.length) return;
-   if(media.currentTime > 3) media.currentTime = 0;
-   else playAt(current < 1 ? playlist.length - 1 : current - 1);
-  },
-  seekto: details => {
-   if(Number.isFinite(details.seekTime) && Number.isFinite(media.duration)){
-    media.currentTime = Math.max(0, Math.min(details.seekTime, media.duration));
-   }
-  },
-  seekbackward: details => {
-   const offset = Number.isFinite(details.seekOffset) ? details.seekOffset : 10;
-   media.currentTime = Math.max(0, media.currentTime - offset);
-  },
-  seekforward: details => {
-   const offset = Number.isFinite(details.seekOffset) ? details.seekOffset : 10;
-   media.currentTime = Math.min(Number.isFinite(media.duration) ? media.duration : media.currentTime + offset, media.currentTime + offset);
-  }
- };
- Object.entries(actions).forEach(([action, handler])=>{
-  try{ navigator.mediaSession.setActionHandler(action, handler); }catch(_){}
- });
-}
-installSystemMediaActions();
-
-let bassEnabled = true, dtsEnabled = true, compEnabled = false, crossEnabled = true;
+let bassEnabled = true, dtsEnabled = true, compEnabled = true, crossEnabled = true;
 
 $('bassToggle').onclick = () => {
  initAudioNodes();
@@ -1472,7 +1406,7 @@ $('bassToggle').onclick = () => {
 
 $('bassGain').oninput = e => {
  const val = +e.target.value;
- $('bassGainVal').textContent = (val > 0 ? '+' : '') + val + 'dB';
+ $('bassGainVal').textContent = '+' + val + 'dB';
  if(bassFilter && bassEnabled){
   bassFilter.gain.value = val;
  }
@@ -1492,9 +1426,29 @@ $('compToggle').onclick = () => {
  $('compToggle').classList.toggle('active-btn', compEnabled);
 };
 
+/* CROSSFEED: 왼쪽 소리의 저음 일부를 살짝 늦춰 오른쪽에, 오른쪽은 왼쪽에 섞는다(헤드폰 크로스피드). */
+function buildCrossfeed(ctx, input, on){
+ const split = ctx.createChannelSplitter(2), merge = ctx.createChannelMerger(2), out = ctx.createGain();
+ const dL = ctx.createGain(), dR = ctx.createGain(), cL = ctx.createGain(), cR = ctx.createGain();
+ const lpL = ctx.createBiquadFilter(), lpR = ctx.createBiquadFilter();
+ const dlL = ctx.createDelay(0.01), dlR = ctx.createDelay(0.01);
+ [lpL, lpR].forEach(f => { f.type = 'lowpass'; f.frequency.value = 700; f.Q.value = 0.5; });
+ dlL.delayTime.value = dlR.delayTime.value = 0.0003;
+ input.connect(split);
+ split.connect(dL, 0); split.connect(dR, 1);
+ dL.connect(merge, 0, 0); dR.connect(merge, 0, 1);
+ split.connect(lpL, 0); lpL.connect(dlL); dlL.connect(cL); cL.connect(merge, 0, 1);
+ split.connect(lpR, 1); lpR.connect(dlR); dlR.connect(cR); cR.connect(merge, 0, 0);
+ merge.connect(out);
+ const set = v => { dL.gain.value = dR.gain.value = v ? 0.8 : 1; cL.gain.value = cR.gain.value = v ? 0.4 : 0; };
+ set(on);
+ return { out, set };
+}
+
 $('crossToggle').onclick = () => {
  initAudioNodes();
  crossEnabled = !crossEnabled;
+ if(crossGraph) crossGraph.set(crossEnabled);
  $('crossToggle').classList.toggle('active-btn', crossEnabled);
 };
 
@@ -1535,9 +1489,6 @@ $('list').addEventListener('click', async e => {
    $('currentTitle').textContent = '재생할 미디어 파일을 선택하세요';
    $('currentMeta').textContent = 'BV MV Player';
    $('playBtn').textContent = '▶';
-   if('mediaSession' in navigator){
-    try{ navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; }catch(_){}
-   }
    $('audioVisual').classList.remove('hidden');
   } else if(current > i){
    current--;
@@ -1578,12 +1529,14 @@ $('nextBtn').onclick = nextTrack;
 
 $('shuffleBtn').onclick = () => {
  shuffle = !shuffle;
+ playedOnce.clear();
  updateModeUI();
  savePlaybackState(true);
 };
 
 $('modeBtn').onclick = () => {
  loopAll = !loopAll;
+ playedOnce.clear();
  updateModeUI();
  savePlaybackState(true);
 };
@@ -1630,13 +1583,28 @@ media.ontimeupdate = () => {
   $('duration').textContent = fmt(media.duration);
   savePlaybackState(false);
  }
- updateSystemPlaybackState();
 };
 
+/* 한번듣기: 전체 곡을 한 번씩만 재생하고 마지막 곡이 끝나면 멈춘다(랜덤이면 안 들은 곡만 골라서). */
+let playedOnce = new Set();
 media.onended = () => {
  if(loopAll){
+  playedOnce.clear();
   nextTrack();
+  return;
+ }
+ playedOnce.add(current);
+ let nextIdx = -1;
+ if(shuffle){
+  const rest = playlist.map((_, i) => i).filter(i => !playedOnce.has(i));
+  if(rest.length) nextIdx = rest[Math.floor(Math.random() * rest.length)];
+ } else if(current < playlist.length - 1){
+  nextIdx = current + 1;
+ }
+ if(nextIdx >= 0){
+  playAt(nextIdx);
  } else {
+  playedOnce.clear();
   media.pause();
   media.currentTime = 0;
   $('playBtn').textContent = '▶';
@@ -1644,17 +1612,8 @@ media.onended = () => {
  }
 };
 
-media.onplay = () => {
- $('playBtn').textContent = '❚❚';
- updateSystemMediaMetadata();
- updateSystemPlaybackState();
- savePlaybackState(true);
-};
-media.onpause = () => {
- $('playBtn').textContent = '▶';
- updateSystemPlaybackState();
- savePlaybackState(true);
-};
+media.onplay = () => { $('playBtn').textContent = '❚❚'; savePlaybackState(true); };
+media.onpause = () => { $('playBtn').textContent = '▶'; savePlaybackState(true); };
 
 const videoWrapperEl = document.querySelector('.video-wrapper');
 function isFullscreenActive(){
@@ -1714,9 +1673,6 @@ $('clearBtn').onclick = async () => {
  $('currentTitle').textContent = '재생할 미디어 파일을 선택하세요';
  $('currentMeta').textContent = 'BV MV Player';
  $('playBtn').textContent = '▶';
- if('mediaSession' in navigator){
-  try{ navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; }catch(_){}
- }
  $('audioVisual').classList.remove('hidden');
  await renderAlbumTabs();
  render();
@@ -1740,6 +1696,7 @@ function curFx(){
   comp: compressorNode ? compressorNode.threshold.value : -24,
   bass: bassFilter ? bassFilter.gain.value : (bassEnabled ? +$('bassGain').value : 0),
   dts: dtsFilter ? dtsFilter.gain.value : (dtsEnabled ? 4 : 0),
+  cross: !!crossEnabled,
   eq: eqFilters.length ? eqFilters.map(e=>e.gain.value) : freqBands.map(()=>0)
  };
 }
@@ -1753,7 +1710,9 @@ async function renderWithFx(file, fx){
  const comp = oc.createDynamicsCompressor(); comp.threshold.value = fx.comp; comp.knee.value = 30; comp.ratio.value = 12;
  const bass = oc.createBiquadFilter(); bass.type='lowshelf'; bass.frequency.value=150; bass.gain.value=fx.bass;
  const dts = oc.createBiquadFilter(); dts.type='peaking'; dts.frequency.value=3500; dts.Q.value=1.2; dts.gain.value=fx.dts;
- s.connect(comp); comp.connect(bass); bass.connect(dts);
+ s.connect(comp);
+ if(fx.cross && src.numberOfChannels === 2){ buildCrossfeed(oc, comp, true).out.connect(bass); } else { comp.connect(bass); }
+ bass.connect(dts);
  let prev = dts;
  freqBands.forEach((f,i)=>{ const n = oc.createBiquadFilter(); n.type='peaking'; n.frequency.value=f; n.Q.value=1.4; n.gain.value=fx.eq[i]||0; prev.connect(n); prev = n; });
  prev.connect(oc.destination);
@@ -1790,35 +1749,11 @@ $('saveSound').onclick = () => saveSounds(false);
 $('saveAllSound').onclick = () => saveSounds(true);
 </script>
 
-<div id="pwaInstallBar" role="region" aria-label="홈 화면 앱 설치">
-  <span id="pwaInstallText">BV MV Player를 홈 화면에 추가하세요</span>
-  <button id="pwaInstallButton" type="button">설치</button>
-  <button class="pwaClose" id="pwaInstallClose" type="button" aria-label="닫기">✕</button>
-</div>
-<script id="pwa-install-helper">
-(()=>{
- let deferred=null;
- const bar=document.getElementById('pwaInstallBar');
- const btn=document.getElementById('pwaInstallButton');
- const msg=document.getElementById('pwaInstallText');
- const close=document.getElementById('pwaInstallClose');
- const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
- if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
-   window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
- }
- if(standalone()) return;
- const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
- if(ios){msg.textContent='홈 화면 추가: 공유 버튼(□↑) → “홈 화면에 추가”';btn.textContent='확인';btn.addEventListener('click',()=>bar.remove());bar.style.display='flex';}
- window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;bar.style.display='flex';});
- btn.addEventListener('click',async()=>{
-   if(!deferred){if(!ios){msg.textContent='브라우저 메뉴에서 “홈 화면에 추가” 또는 “앱 설치”를 선택하세요';btn.textContent='확인';}return;}
-   deferred.prompt();
-   try{await deferred.userChoice;}catch(_){}
-   deferred=null;bar.style.display='none';
- });
- close.addEventListener('click',()=>bar.style.display='none');
- window.addEventListener('appinstalled',()=>{bar.style.display='none';deferred=null;});
-})();
+<script>
+/* 웹 주소로 열 때만 '앱 설치'가 가능하도록 서비스 워커 등록 (안드로이드 앱 안에서는 동작하지 않음) */
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
 </script>
 </body>
 </html>
